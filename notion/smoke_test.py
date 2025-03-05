@@ -10,7 +10,7 @@ def run_live_smoke_test(token_v2, parent_page_url_or_id):
     client = NotionClient(token_v2=token_v2)
 
     parent_page = client.get_block(parent_page_url_or_id)
-
+    print(parent_page)
     page = parent_page.children.add_new(
         PageBlock,
         title="Smoke test at {}".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
