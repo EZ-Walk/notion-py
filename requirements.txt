@@ -6,3 +6,7 @@ python-slugify
 dictdiffer
 cached-property
 openai
+Flask==2.2.5
+Werkzeug==2.2.3
+Flask-SQLAlchemy==3.0.3
+passlib==1.7.4
