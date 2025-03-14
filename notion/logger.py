@@ -29,6 +29,10 @@ else:
 
     if NOTIONPY_LOG_LEVEL == "debug":
         set_log_level(logging.DEBUG)
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        stream_handler.setLevel(logging.INFO)
+        logger.addHandler(stream_handler)
     elif NOTIONPY_LOG_LEVEL == "info":
         set_log_level(logging.INFO)
     elif NOTIONPY_LOG_LEVEL == "warning":

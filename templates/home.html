@@ -125,6 +125,20 @@
         .page-link:hover {
             text-decoration: underline;
         }
+        .activate-button {
+            width: auto;
+            padding: 0.5rem 1rem;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-bottom: 0;
+        }
+        .activate-button:hover {
+            background-color: #218838;
+        }
         .table-header {
             display: flex;
             justify-content: space-between;
@@ -197,6 +211,8 @@
             <thead>
                 <tr>
                     <th>Page Title</th>
+                    <th>Count</th>
+                    <th>Activate</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -204,8 +220,12 @@
                 {% for page in pages %}
                 <tr>
                     <td>{{ page.title }}</td>
+                    <td>{{ page.count if page.count is defined else 'null' }}</td>
                     <td>
-                        <a href="https://www.notion.so/{{ page.id }}" target="_blank" class="page-link">Open in Notion</a>
+                        <button class="activate-button" data-page-id="{{ page.id }}">Activate</button>
+                    </td>
+                    <td>
+                        <a href="https://www.notion.so/{{ page.display_id if page.display_id is defined else page.id }}" target="_blank" class="page-link">Open in Notion</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -218,5 +238,70 @@
         </div>
         {% endif %}
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get all activate buttons
+            const activateButtons = document.querySelectorAll('.activate-button');
+            
+            // Add click event listener to each button
+            activateButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const pageId = this.getAttribute('data-page-id');
+                    const row = this.closest('tr');
+                    const countCell = row.querySelector('td:nth-child(2)');
+                    
+                    // Disable button while processing
+                    this.disabled = true;
+                    this.textContent = 'Processing...';
+                    
+                    // Send AJAX request to activate the page
+                    fetch('/activate_page', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            page_id: pageId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Update the count cell with the new count
+                            countCell.textContent = data.count;
+                            this.textContent = 'Activated';
+                            
+                            // Re-enable button after a delay
+                            setTimeout(() => {
+                                this.textContent = 'Activate';
+                                this.disabled = false;
+                            }, 2000);
+                        } else {
+                            // Show error
+                            this.textContent = 'Error';
+                            alert('Error: ' + data.error);
+                            
+                            // Re-enable button after a delay
+                            setTimeout(() => {
+                                this.textContent = 'Activate';
+                                this.disabled = false;
+                            }, 2000);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        this.textContent = 'Error';
+                        alert('An error occurred. Please try again.');
+                        
+                        // Re-enable button after a delay
+                        setTimeout(() => {
+                            this.textContent = 'Activate';
+                            this.disabled = false;
+                        }, 2000);
+                    });
+                });
+            });
+        });
+    </script>
 </body>
 </html>

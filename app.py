@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from passlib.hash import pbkdf2_sha256
 from notion.client import NotionClient
+from notion.block import HeaderBlock, VideoBlock
 import secrets
 
 app = Flask(__name__)
@@ -45,7 +46,7 @@ def home():
             client = NotionClient(token_v2=user.notion_token)
             top_pages = client.get_top_level_pages()
             print("Top Pages:", top_pages)
-            pages = [{'title': page.title, 'id': page.id.replace('-', '')} for page in top_pages if page.type == 'page']
+            pages = [{'title': page.title, 'id': page.id, 'display_id': page.id.replace('-', ''), 'count': None} for page in top_pages if page.type == 'page']
             print("Pages:", pages)
             notion_status = f'Connected - {len(pages)} pages found'
             print("Notion Status:", notion_status)
@@ -141,6 +142,29 @@ def register():
 def logout():
     session.pop('username', None)
     return redirect(url_for('login'))
+
+@app.route('/activate_page', methods=['POST'])
+def activate_page():
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'}), 401
+    
+    page_id = request.json.get('page_id')
+    if not page_id:
+        return jsonify({'success': False, 'error': 'No page ID provided'}), 400
+    
+    user = User.query.filter_by(username=session['username']).first()
+    if not user.notion_token:
+        return jsonify({'success': False, 'error': 'Notion token not configured'}), 400
+    
+    try:
+        client = NotionClient(token_v2=user.notion_token)
+        page = client.get_block(page_id)
+        page.children.add_new(HeaderBlock, title="The finest music:")
+        video = page.children.add_new(VideoBlock, width=100)
+        video.set_source_url("https://www.youtube.com/watch?v=oHg5SJYRHA0")
+        return jsonify({'success': True, 'count': 1})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
