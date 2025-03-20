@@ -2,6 +2,87 @@
 
 Unofficial Python 3 client for Notion.so API v3.
 
+## Kafka Integration
+
+This project now includes Kafka integration for event streaming. The application has been containerized with Docker and includes a Kafka broker for real-time event processing.
+
+### Running with Docker Compose
+
+To run the application with Kafka integration:
+
+```bash
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+The application will be available at http://localhost:5001
+
+### Kafka and Zookeeper
+
+This project uses the following Docker images:
+- Zookeeper: `docker.io/bitnami/zookeeper:3.8`
+- Kafka: `docker.io/bitnami/kafka:2.8`
+
+### Kafka Topics
+
+The application uses the following Kafka topics:
+
+- `user-activity`: Tracks user login and other user-related events
+- `notion-events`: Tracks interactions with Notion pages and any errors
+
+### Monitoring Kafka Messages
+
+You can use the included `kafka_consumer.py` script to monitor messages on a specific topic:
+
+```bash
+# Run inside the container (recommended)
+docker-compose exec app python kafka_consumer.py --topic user-activity
+
+# Or run another consumer for a different topic
+docker-compose exec app python kafka_consumer.py --topic notion-events
+
+# Specify a consumer group to maintain offsets
+docker-compose exec app python kafka_consumer.py --topic user-activity --group my-consumer-group
+```
+
+### Testing with the Kafka Producer
+
+A Kafka producer script is included to help test the Kafka integration independently:
+
+```bash
+# Send a test login event from inside the container
+docker-compose exec app python kafka_producer.py --topic user-activity --message-type login
+
+# Send a test event with a specific key
+docker-compose exec app python kafka_producer.py --topic user-activity --message-type login --key user123
+
+# Send a test page activation event
+docker-compose exec app python kafka_producer.py --topic notion-events --message-type page_activated
+
+# Send a custom message
+docker-compose exec app python kafka_producer.py --topic notion-events --custom-message '{"event_type":"custom","data":"test"}'
+```
+
+### Important Notes
+
+1. When running inside Docker containers, the Kafka bootstrap server is automatically set to `kafka:9092`
+2. When running locally outside containers, you'll need to specify `--bootstrap-servers localhost:9092`
+3. Make sure the Kafka and Zookeeper services are running before using the scripts
+
+### Kafka Integration
+
+The Kafka integration consists of the following components:
+
+- `kafka_utils.py` - Core Kafka client functionality
+- `kafka_consumer.py` - Standalone Kafka consumer script
+- `kafka_producer.py` - Standalone Kafka producer script
+
 - Object-oriented interface (mapping database tables to Python classes/attributes)
 - Automatic conversion between internal Notion formats and appropriate Python objects
 - Local cache of data in a unified data store *(Note: disk cache now disabled by default; to enable, add `enable_caching=True` when initializing `NotionClient`)*

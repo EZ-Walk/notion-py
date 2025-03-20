@@ -4,6 +4,10 @@ from passlib.hash import pbkdf2_sha256
 from notion.client import NotionClient
 from notion.block import HeaderBlock, VideoBlock
 import secrets
+import json
+import logging
+import datetime
+from kafka_utils import KafkaClient
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -11,6 +15,17 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
+# Initialize Kafka client
+kafka_client = KafkaClient()
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Define Kafka topics
+USER_ACTIVITY_TOPIC = 'user-activity'
+NOTION_EVENTS_TOPIC = 'notion-events'
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -114,6 +129,17 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             session['username'] = username
+            
+            # Send login event to Kafka
+            kafka_client.send_message(
+                USER_ACTIVITY_TOPIC,
+                {
+                    'event_type': 'login',
+                    'username': username,
+                    'timestamp': str(datetime.datetime.now())
+                }
+            )
+            
             return redirect(url_for('home'))
         return render_template('login.html', error='Invalid credentials')
     
@@ -162,9 +188,46 @@ def activate_page():
         page.children.add_new(HeaderBlock, title="The finest music:")
         video = page.children.add_new(VideoBlock, width=100)
         video.set_source_url("https://www.youtube.com/watch?v=oHg5SJYRHA0")
+        
+        # Send notion event to Kafka
+        kafka_client.send_message(
+            NOTION_EVENTS_TOPIC,
+            {
+                'event_type': 'page_activated',
+                'username': session['username'],
+                'page_id': page_id,
+                'page_title': page.title,
+                'timestamp': str(datetime.datetime.now())
+            }
+        )
+        
         return jsonify({'success': True, 'count': 1})
     except Exception as e:
+        # Send error event to Kafka
+        kafka_client.send_message(
+            NOTION_EVENTS_TOPIC,
+            {
+                'event_type': 'error',
+                'username': session['username'],
+                'page_id': page_id,
+                'error': str(e),
+                'timestamp': str(datetime.datetime.now())
+            }
+        )
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# Setup Kafka consumer for demonstration purposes
+def handle_user_activity(key, value):
+    logger.info(f"Received user activity: {value}")
+
+def handle_notion_events(key, value):
+    logger.info(f"Received notion event: {value}")
+
+# Start Kafka consumers
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Start Kafka consumers in background threads
+    kafka_client.start_consumer_thread(USER_ACTIVITY_TOPIC, handle_user_activity, 'flask-app-group')
+    kafka_client.start_consumer_thread(NOTION_EVENTS_TOPIC, handle_notion_events, 'flask-app-group')
+    
+    # Start Flask app
+    app.run(host='0.0.0.0', port=5001, debug=True)
