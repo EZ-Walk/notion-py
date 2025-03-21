@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 import uuid
+import os
 
 from requests import Session, HTTPError
 from requests.cookies import cookiejar_from_dict
@@ -26,6 +27,13 @@ from .space import Space
 from .store import RecordStore
 from .user import User
 from .utils import extract_id, now
+
+# Import Kafka client if available
+try:
+    from kafka_utils import KafkaClient
+    KAFKA_AVAILABLE = True
+except ImportError:
+    KAFKA_AVAILABLE = False
 
 
 def create_session(client_specified_retry=None):
@@ -73,6 +81,8 @@ class NotionClient(object):
         email=None,
         password=None,
         client_specified_retry=None,
+        enable_kafka=False,
+        kafka_bootstrap_servers=None,
     ):
         self.session = create_session(client_specified_retry)
         if token_v2:
@@ -91,11 +101,52 @@ class NotionClient(object):
                 self.start_monitoring()
         else:
             self._monitor = None
+            
+        # Initialize Kafka client if enabled
+        self._kafka = None
+        if enable_kafka and KAFKA_AVAILABLE:
+            bootstrap_servers = kafka_bootstrap_servers or os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+            self._init_kafka(bootstrap_servers)
 
         self._update_user_info()
 
     def start_monitoring(self):
         self._monitor.poll_async()
+        
+    def _init_kafka(self, bootstrap_servers):
+        """Initialize the Kafka client"""
+        try:
+            self._kafka = KafkaClient(bootstrap_servers=bootstrap_servers)
+            logger.info(f"Kafka client initialized with bootstrap servers: {bootstrap_servers}")
+        except Exception as e:
+            logger.error(f"Failed to initialize Kafka client: {e}")
+            self._kafka = None
+            
+    def publish_event(self, topic, event_data, key=None):
+        """Publish an event to a Kafka topic"""
+        if not self._kafka:
+            logger.debug("Kafka client not initialized, event not published")
+            return False
+            
+        return self._kafka.send_message(topic, event_data, key)
+        
+    def publish_notion_event(self, event_type, data):
+        """Publish a Notion-specific event to the notion-events topic"""
+        if not self._kafka:
+            return False
+            
+        event_data = {
+            'event_type': event_type,
+            'timestamp': now(),
+            'data': data
+        }
+        
+        # Add user info if available
+        if hasattr(self, 'current_user') and self.current_user:
+            event_data['user_id'] = self.current_user.id
+            event_data['user_email'] = getattr(self.current_user, 'email', '')
+            
+        return self.publish_event('notion-events', event_data)
     
     def _fetch_guest_space_data(self, records):
         """

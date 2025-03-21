@@ -1,4 +1,5 @@
 from copy import deepcopy
+import time
 
 from .logger import logger
 from .operations import build_operation
@@ -112,9 +113,37 @@ class Record(object):
         """
         Set a specific `value` (under the specific `path`) on the record's data structure on the server.
         """
+        # Get the old value before updating (for event publishing)
+        old_value = self.get(path)
+        
+        # Submit the transaction to update the value
         self._client.submit_transaction(
             build_operation(id=self.id, path=path, args=value, table=self._table)
         )
+        
+        # Publish event to Kafka if client has Kafka enabled
+        if hasattr(self._client, '_kafka') and self._client._kafka:
+            # Create event data
+            event_data = {
+                'record_table': self._table,
+                'record_id': self.id,
+                'path': path if isinstance(path, str) else '.'.join(map(str, path)),
+                'old_value': old_value,
+                'new_value': value,
+                'timestamp': time.time()
+            }
+            
+            # Add additional context for blocks
+            if self._table == 'block':
+                try:
+                    event_data['block_type'] = self.get('type')
+                    event_data['title'] = self.get('properties.title', [['']]) if self.get('properties') else [['']]
+                    event_data['parent_id'] = self.get('parent_id')
+                except Exception as e:
+                    logger.debug(f"Error getting block details for event: {e}")
+            
+            # Publish the event
+            self._client.publish_notion_event('record_updated_direct', event_data)
 
     def __eq__(self, other):
         return self.id == other.id

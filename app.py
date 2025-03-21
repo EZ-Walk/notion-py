@@ -183,7 +183,7 @@ def activate_page():
         return jsonify({'success': False, 'error': 'Notion token not configured'}), 400
     
     try:
-        client = NotionClient(token_v2=user.notion_token)
+        client = NotionClient(token_v2=user.notion_token, enable_kafka=True, kafka_bootstrap_servers='kafka:9092')
         page = client.get_block(page_id)
         page.children.add_new(HeaderBlock, title="The finest music:")
         video = page.children.add_new(VideoBlock, width=100)

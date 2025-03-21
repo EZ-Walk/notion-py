@@ -174,6 +174,7 @@ class Monitor(object):
             logger.debug(
                 "Received the following event from the remote server: {}".format(event)
             )
+            
 
             if not isinstance(event, dict):
                 continue
@@ -199,6 +200,30 @@ class Monitor(object):
                                 record_table, record_id, local_version, event["value"]
                             )
                         )
+                        
+                        # Publish event to Kafka if client has Kafka enabled
+                        if hasattr(self.client, '_kafka') and self.client._kafka:
+                            event_data = {
+                                'record_table': record_table,
+                                'record_id': record_id,
+                                'old_version': local_version,
+                                'new_version': event["value"],
+                                'timestamp': time.time()
+                            }
+                            
+                            # Add more context for block updates
+                            if record_table == 'block':
+                                try:
+                                    block = self.client.get_block(record_id)
+                                    if block:
+                                        event_data['block_type'] = getattr(block, 'type', 'unknown')
+                                        event_data['title'] = getattr(block, 'title', '')
+                                        event_data['parent_id'] = getattr(block, 'parent_id', None)
+                                except Exception as e:
+                                    logger.debug(f"Error getting block details for event: {e}")
+                            
+                            self.client.publish_notion_event('record_updated', event_data)
+                        
                         records_to_refresh[record_table].append(record_id)
                     else:
                         logger.debug(
